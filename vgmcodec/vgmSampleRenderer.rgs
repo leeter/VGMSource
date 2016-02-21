@@ -1,0 +1,16 @@
+HKCR
+{
+	NoRemove CLSID
+	{
+		ForceRemove {C6CCA2C4-496E-4316-8250-25ECC5B27656} = s 'vgmSampleRenderer Class'
+		{
+			ForceRemove Programmable
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Free'
+			}
+			TypeLib = s '{47AFFF88-3FAC-458A-91A6-AD25A05BDF67}'
+			Version = s '1.0'
+		}
+	}
+}

@@ -1,0 +1,15 @@
+HKCR
+{
+	NoRemove CLSID
+	{
+		ForceRemove {91AFCA00-13EB-4A46-9FA5-41CB7FDEC716} = s 'vgmByteStreamHandler Class'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Free'
+			}
+			TypeLib = s '{47AFFF88-3FAC-458A-91A6-AD25A05BDF67}'
+			Version = s '1.0'
+		}
+	}
+}

@@ -1,0 +1,81 @@
+// vgmcodec.idl : IDL source for vgmcodec
+//
+
+// This file will be processed by the MIDL tool to
+// produce the type library (vgmcodec.tlb) and marshalling code.
+
+import "Mfidl.idl";
+import "vgmPlayState.h";
+
+cpp_quote("#if 0") //internal to MIDL generation
+typedef VGM_PLAY_STATE* REF_VGM_PLAY_STATE;
+cpp_quote("#endif")
+
+[
+	uuid(0CA01A22-FCBB-4EB8-B038-48DC5FA32F0E),
+	version(1.0),
+	pointer_default(unique)
+]
+interface IVGMSource : IMFMediaSource
+{
+	HRESULT GetPlayState([out] REF_VGM_PLAY_STATE pState);
+	HRESULT Open([in] IMFByteStream * pOutputStream);
+}
+
+[
+	uuid(D0F27A80-D023-4AA9-AFF7-B5FCCEA360D7),
+	version(1.0),
+	pointer_default(unique)
+]
+interface IVGMStream : IMFMediaStream
+{
+	HRESULT Shutdown(void);
+	HRESULT CheckShutdown(void);
+	HRESULT SetPosition([in] LONGLONG rtNewPosition);
+	HRESULT DeliverQueuedSamples(void);
+	HRESULT Flush(void);
+};
+
+[
+	uuid(47AFFF88-3FAC-458A-91A6-AD25A05BDF67),
+	version(1.0),
+]
+library vgmcodecLib
+{
+	importlib("stdole2.tlb");
+	cpp_quote("DEFINE_MEDIATYPE_GUID(MFAudioFormat_VGM, FCC('Vgm '));")
+
+// Property GUIDS
+// {B31D90E8-0211-4BF1-8802-6CA7D3BF85F5}
+cpp_quote( "DEFINE_GUID(MF_MT_VGM_HEADER, 0xb31d90e8, 0x211, 0x4bf1, 0x88, 0x2, 0x6c, 0xa7, 0xd3, 0xbf, 0x85, 0xf5);")
+
+	[
+		uuid(C6CCA2C4-496E-4316-8250-25ECC5B27656)		
+	]
+	coclass vgmSampleRenderer
+	{
+		[default] interface IMFTransform;
+	};
+	[
+		uuid(97D1F767-D25A-4BEC-80E2-0654CA442377)		
+	]
+	coclass vgmSource
+	{
+		[default] interface IVGMSource;
+	};
+	[
+		uuid(3A4252C1-1706-4076-A4F6-28D8C7BFFB09)		
+	]
+	coclass vgmStream
+	{
+		[default] interface IVGMStream;
+	};
+	[
+		uuid(91AFCA00-13EB-4A46-9FA5-41CB7FDEC716)		
+	]
+	coclass vgmByteStreamHandler
+	{
+		[default] interface IMFByteStreamHandler;
+	};
+};
+
