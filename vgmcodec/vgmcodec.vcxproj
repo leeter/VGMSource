@@ -550,6 +550,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
       </PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="ExceptionTranslator.cpp" />
     <ClCompile Include="guiddef.cpp" />
     <ClCompile Include="gzip.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
@@ -656,6 +657,7 @@
     <ClInclude Include="banned.h" />
     <ClInclude Include="bufferLocker.h" />
     <ClInclude Include="ChipFactory.h" />
+    <ClInclude Include="ExceptionTranslator.h" />
     <ClInclude Include="IChip.h" />
     <ClInclude Include="dllmain.h" />
     <ClInclude Include="lockHelper.h" />

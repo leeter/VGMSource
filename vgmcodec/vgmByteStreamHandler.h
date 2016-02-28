@@ -37,12 +37,12 @@ END_COM_MAP()
 
 	DECLARE_PROTECT_FINAL_CONSTRUCT()
 
-	HRESULT FinalConstruct() _NOEXCEPT
+	HRESULT FinalConstruct() noexcept
 	{
 		return S_OK;
 	}
 
-	void FinalRelease() _NOEXCEPT
+	void FinalRelease() noexcept
 	{
 	}
 
@@ -55,21 +55,21 @@ public:
 		/* [annotation][out] */
 		_Outptr_opt_  IUnknown **ppIUnknownCancelCookie,
 		/* [in] */ IMFAsyncCallback *pCallback,
-		/* [in] */ IUnknown *punkState) _NOEXCEPT;
+		/* [in] */ IUnknown *punkState) noexcept;
 
 	IFACEMETHOD(EndCreateObject)(
 		/* [in] */ IMFAsyncResult *pResult,
 		/* [annotation][out] */
 		_Out_  MF_OBJECT_TYPE *pObjectType,
 		/* [annotation][out] */
-		_Outptr_  IUnknown **ppObject) _NOEXCEPT;
+		_Outptr_  IUnknown **ppObject) noexcept;
 
 	IFACEMETHOD(CancelObjectCreation)(
-		/* [in] */ IUnknown *pIUnknownCancelCookie) _NOEXCEPT;
+		/* [in] */ IUnknown *pIUnknownCancelCookie) noexcept;
 
 	IFACEMETHOD(GetMaxNumberOfBytesRequiredForResolution)(
 		/* [annotation][out] */
-		_Out_  QWORD *pqwBytes) _NOEXCEPT;
+		_Out_  QWORD *pqwBytes) noexcept;
 
 private:
 	ATL::CComPtr<IMFByteStream> handleGZip(gsl::not_null<IMFByteStream*> );
