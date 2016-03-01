@@ -153,15 +153,17 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetOutputAvailableType(
 		return MF_E_NO_MORE_TYPES;
 	}
 
-	vgmcodec::exceptions::ExceptionTranslator trans{
-		[this, dwOutputStreamID, dwTypeIndex, &ppType]() {
-			vgmcodec::helpers::lockHelper lock(*this);
-			if (m_pInputType == nullptr)
-			{
-				_com_issue_error(MF_E_TRANSFORM_TYPE_NOT_SET);
-			}
-			ATL::CComPtr<IMFMediaType> pOutputType;
+	{
+		vgmcodec::helpers::lockHelper lock(*this);
+		if (m_pInputType == nullptr)
+		{
+			return MF_E_TRANSFORM_TYPE_NOT_SET;
+		}
+	}
 
+	vgmcodec::exceptions::ExceptionTranslator trans{
+		[dwOutputStreamID, dwTypeIndex, &ppType]() {
+			ATL::CComPtr<IMFMediaType> pOutputType;
 			_com_util::CheckError(::MFCreateMediaType(&pOutputType));
 			_com_util::CheckError(pOutputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio));
 			_com_util::CheckError(pOutputType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM));
