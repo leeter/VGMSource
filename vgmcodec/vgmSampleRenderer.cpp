@@ -6,6 +6,7 @@
 #include "ChipFactory.h"
 #include "lockHelper.h"
 #include "bufferLocker.h"
+#include "ExceptionTranslator.h"
 
 namespace{
 	std::int16_t inline LimitToShort(std::int32_t Value)
@@ -35,7 +36,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetStreamLimits(
 	/* [out] */ DWORD *pdwInputMinimum,
 	/* [out] */ DWORD *pdwInputMaximum,
 	/* [out] */ DWORD *pdwOutputMinimum,
-	/* [out] */ DWORD *pdwOutputMaximum) _NOEXCEPT
+	/* [out] */ DWORD *pdwOutputMaximum) noexcept
 {
 	if ((pdwInputMinimum == nullptr) ||
 		(pdwInputMaximum == nullptr) ||
@@ -74,7 +75,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetStreamCount(
 
 STDMETHODIMP CvgmSampleRenderer::GetInputStreamInfo( 
 	DWORD dwInputStreamID,
-	/* [out] */ __RPC__out MFT_INPUT_STREAM_INFO *pStreamInfo) _NOEXCEPT
+	/* [out] */ __RPC__out MFT_INPUT_STREAM_INFO *pStreamInfo) noexcept
 {
 	if (pStreamInfo == nullptr)
 	{
@@ -100,7 +101,7 @@ STDMETHODIMP CvgmSampleRenderer::GetInputStreamInfo(
 
 STDMETHODIMP CvgmSampleRenderer::GetOutputStreamInfo( 
 	DWORD dwOutputStreamID,
-	/* [out] */ __RPC__out MFT_OUTPUT_STREAM_INFO *pStreamInfo) _NOEXCEPT
+	/* [out] */ __RPC__out MFT_OUTPUT_STREAM_INFO *pStreamInfo) noexcept
 {
 	if (pStreamInfo == nullptr)
 	{
@@ -135,7 +136,7 @@ STDMETHODIMP CvgmSampleRenderer::GetOutputStreamInfo(
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetOutputAvailableType( 
 	DWORD dwOutputStreamID,
 	DWORD dwTypeIndex,
-	/* [out] */ __RPC__deref_out_opt IMFMediaType **ppType) _NOEXCEPT
+	/* [out] */ __RPC__deref_out_opt IMFMediaType **ppType) noexcept
 {
 	if (ppType == nullptr)
 	{
@@ -152,84 +153,39 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetOutputAvailableType(
 		return MF_E_NO_MORE_TYPES;
 	}
 
-	vgmcodec::helpers::lockHelper lock(*this);
+	vgmcodec::exceptions::ExceptionTranslator trans{
+		[this, dwOutputStreamID, dwTypeIndex, &ppType]() {
+			vgmcodec::helpers::lockHelper lock(*this);
+			if (m_pInputType == nullptr)
+			{
+				_com_issue_error(MF_E_TRANSFORM_TYPE_NOT_SET);
+			}
+			ATL::CComPtr<IMFMediaType> pOutputType;
 
-	HRESULT hr = S_OK;
+			_com_util::CheckError(::MFCreateMediaType(&pOutputType));
+			_com_util::CheckError(pOutputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio));
+			_com_util::CheckError(pOutputType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM));
+			_com_util::CheckError(pOutputType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE));
+			_com_util::CheckError(pOutputType->SetUINT32(MF_MT_AUDIO_PREFER_WAVEFORMATEX, TRUE));
+			_com_util::CheckError(pOutputType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, CHANNEL_COUNT));
+			static_assert(16 == BITS_PERSAMPLE, "invalid number of bits per sample");
+			_com_util::CheckError(pOutputType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, BITS_PERSAMPLE));
+			_com_util::CheckError(pOutputType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, VGM_SAMPLE_RATE));
+			static_assert(4 == OUTPUT_BLOCK_ALIGN, "invalid output block alignment");
+			_com_util::CheckError(pOutputType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, OUTPUT_BLOCK_ALIGN));
+			_com_util::CheckError(pOutputType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, AVG_OUTPUT_BYTES_PER_SEC(VGM_SAMPLE_RATE)));
+			_com_util::CheckError(pOutputType.QueryInterface(ppType));
+		}
+	};
 
-	ATL::CComPtr<IMFMediaType> pOutputType;
-
-	if (m_pInputType == nullptr)
-	{
-		hr = MF_E_TRANSFORM_TYPE_NOT_SET;
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = ::MFCreateMediaType(&pOutputType);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputType->SetUINT32(MF_MT_AUDIO_PREFER_WAVEFORMATEX, TRUE);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, CHANNEL_COUNT);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		static_assert(16 == BITS_PERSAMPLE, "invalid number of bits per sample");
-		hr = pOutputType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, BITS_PERSAMPLE);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, VGM_SAMPLE_RATE);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		static_assert(4 == OUTPUT_BLOCK_ALIGN, "invalid output block alignment");
-		hr = pOutputType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, OUTPUT_BLOCK_ALIGN);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, AVG_OUTPUT_BYTES_PER_SEC(VGM_SAMPLE_RATE));
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		pOutputType->QueryInterface(IID_PPV_ARGS(ppType));
-	}
-
-	//this->Unlock();
-	_RPTFW1(_CRT_WARN, L"HRESULT: %X\n", hr);
-	return hr;
+	return trans();
 }
 
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetStreamIDs( 
 	DWORD dwInputIDArraySize,
 	/* [size_is][out] */ DWORD *pdwInputIDs,
 	DWORD dwOutputIDArraySize,
-	/* [size_is][out] */ DWORD *pdwOutputIDs) _NOEXCEPT
+	/* [size_is][out] */ DWORD *pdwOutputIDs) noexcept
 {
 	UNREFERENCED_PARAMETER(dwInputIDArraySize);
 	UNREFERENCED_PARAMETER(pdwInputIDs);
@@ -241,7 +197,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetStreamIDs(
 }
 
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetAttributes( 
-	/* [out] */ IMFAttributes **pAttributes) _NOEXCEPT
+	/* [out] */ IMFAttributes **pAttributes) noexcept
 {
 	UNREFERENCED_PARAMETER(pAttributes);
 	return E_NOTIMPL;
@@ -249,7 +205,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetAttributes(
 
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetInputStreamAttributes( 
 	DWORD dwInputStreamID,
-	/* [out] */ IMFAttributes **pAttributes) _NOEXCEPT
+	/* [out] */ IMFAttributes **pAttributes) noexcept
 {
 	UNREFERENCED_PARAMETER(dwInputStreamID);
 	UNREFERENCED_PARAMETER(pAttributes);
@@ -258,7 +214,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetInputStreamAttributes(
 
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetOutputStreamAttributes( 
 	DWORD dwOutputStreamID,
-	/* [out] */ IMFAttributes **pAttributes) _NOEXCEPT
+	/* [out] */ IMFAttributes **pAttributes) noexcept
 {
 	UNREFERENCED_PARAMETER(dwOutputStreamID);
 	UNREFERENCED_PARAMETER(pAttributes);
@@ -268,7 +224,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetOutputStreamAttributes(
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::SetInputType( 
 	DWORD dwInputStreamID,
 	/* [in] */ IMFMediaType *pType,
-	DWORD dwFlags) _NOEXCEPT
+	DWORD dwFlags) noexcept
 {
 	if (!this->IsValidInputStream(dwInputStreamID))
 	{
@@ -321,8 +277,6 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::SetInputType(
 
 COM_DECLSPEC_NOTHROW HRESULT CvgmSampleRenderer::OnCheckInputType(IMFMediaType *pmt) noexcept
 {
-	HRESULT hr = S_OK;
-
 	//  Check if the type is already set and if so reject any type that's not identical.
 	if (m_pInputType)
 	{
@@ -338,13 +292,13 @@ COM_DECLSPEC_NOTHROW HRESULT CvgmSampleRenderer::OnCheckInputType(IMFMediaType *
 	}
 
 	GUID majortype = { 0 };
-	GUID subtype = { 0 };
-
-	hr = pmt->GetMajorType(std::addressof(majortype));
+	
+	HRESULT hr = pmt->GetMajorType(std::addressof(majortype));
 
 	if (SUCCEEDED(hr) && !IsEqualGUID(majortype, MFMediaType_Audio))
 		hr = MF_E_INVALIDTYPE;
 
+	GUID subtype = { 0 };
 	if (SUCCEEDED(hr))
 		hr = pmt->GetGUID(MF_MT_SUBTYPE, std::addressof(subtype));
 
@@ -355,7 +309,7 @@ COM_DECLSPEC_NOTHROW HRESULT CvgmSampleRenderer::OnCheckInputType(IMFMediaType *
 }
 
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::DeleteInputStream( 
-	DWORD dwStreamID) _NOEXCEPT
+	DWORD dwStreamID) noexcept
 {
 	UNREFERENCED_PARAMETER(dwStreamID);
 	return E_NOTIMPL;
@@ -363,7 +317,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::DeleteInputStream(
 
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::AddInputStreams( 
 	DWORD cStreams,
-	/* [in] */ DWORD *adwStreamIDs) _NOEXCEPT
+	/* [in] */ DWORD *adwStreamIDs) noexcept
 {
 	UNREFERENCED_PARAMETER(cStreams);
 	UNREFERENCED_PARAMETER(adwStreamIDs);
@@ -373,7 +327,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::AddInputStreams(
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetInputAvailableType(
 	DWORD dwInputStreamID,
 	DWORD dwTypeIndex,
-	/* [out] */ IMFMediaType **ppType) _NOEXCEPT
+	/* [out] */ IMFMediaType **ppType) noexcept
 {
 	UNREFERENCED_PARAMETER(dwInputStreamID);
 	UNREFERENCED_PARAMETER(dwTypeIndex);
@@ -383,7 +337,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetInputAvailableType(
 
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetInputStatus( 
 	DWORD dwInputStreamID,
-	/* [out] */  DWORD *pdwFlags) _NOEXCEPT
+	/* [out] */  DWORD *pdwFlags) noexcept
 {
 	if (pdwFlags == nullptr)
 	{
@@ -407,12 +361,11 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetInputStatus(
 		*pdwFlags = 0;
 	}
 
-	//this->Unlock();
 	return S_OK;
 }
 
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetOutputStatus( 
-	/* [out] */  DWORD *pdwFlags) _NOEXCEPT
+	/* [out] */  DWORD *pdwFlags) noexcept
 {
 	if (pdwFlags == nullptr)
 	{
@@ -431,13 +384,12 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetOutputStatus(
 		*pdwFlags = 0;
 	}
 
-	//this->Unlock();
 	return S_OK;
 }
 
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::ProcessEvent( 
 	DWORD dwInputStreamID,
-	/* [in] */  IMFMediaEvent *pEvent) _NOEXCEPT
+	/* [in] */  IMFMediaEvent *pEvent) noexcept
 {
 	UNREFERENCED_PARAMETER(dwInputStreamID);
 	UNREFERENCED_PARAMETER(pEvent);
@@ -447,7 +399,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::ProcessEvent(
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::SetOutputType( 
 	DWORD dwOutputStreamID,
 	/* [in] */ IMFMediaType *pType,
-	DWORD dwFlags) _NOEXCEPT
+	DWORD dwFlags) noexcept
 {
 	if (!IsValidOutputStream(dwOutputStreamID))
 	{
@@ -493,7 +445,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::SetOutputType(
 	return hr;
 }
 
-HRESULT CvgmSampleRenderer::OnSetInputType(IMFMediaType * pmt) _NOEXCEPT
+HRESULT CvgmSampleRenderer::OnSetInputType(IMFMediaType * pmt) noexcept
 {
 	try{
 		UINT32 headerSize = 0;
@@ -528,7 +480,7 @@ HRESULT CvgmSampleRenderer::OnSetInputType(IMFMediaType * pmt) _NOEXCEPT
 	return S_OK;
 }
 
-HRESULT CvgmSampleRenderer::OnCheckOutputType(IMFMediaType *pmt) _NOEXCEPT
+HRESULT CvgmSampleRenderer::OnCheckOutputType(IMFMediaType *pmt) noexcept
 {
 	//  Check if the type is already set and if so reject any type that's not identical.
 	if (m_pOutputType)
@@ -574,7 +526,7 @@ HRESULT CvgmSampleRenderer::OnCheckOutputType(IMFMediaType *pmt) _NOEXCEPT
 	return hr;
 }
 
-HRESULT CvgmSampleRenderer::OnSetOutputType(IMFMediaType * pmt) _NOEXCEPT
+HRESULT CvgmSampleRenderer::OnSetOutputType(IMFMediaType * pmt) noexcept
 {
 
 	m_pOutputType = pmt;
@@ -584,7 +536,7 @@ HRESULT CvgmSampleRenderer::OnSetOutputType(IMFMediaType * pmt) _NOEXCEPT
 
 STDMETHODIMP CvgmSampleRenderer::ProcessMessage( 
 	MFT_MESSAGE_TYPE eMessage,
-	ULONG_PTR ulParam) _NOEXCEPT
+	ULONG_PTR ulParam) noexcept
 {
 	UNREFERENCED_PARAMETER(ulParam);
 	vgmcodec::helpers::lockHelper lock(*this);
@@ -618,7 +570,7 @@ STDMETHODIMP CvgmSampleRenderer::ProcessMessage(
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetInputCurrentType(
 	DWORD           dwInputStreamID,
 	IMFMediaType    **ppType
-	) _NOEXCEPT
+	) noexcept
 {
 	if (ppType == nullptr)
 	{
@@ -649,7 +601,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetInputCurrentType(
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::GetOutputCurrentType(
 	DWORD           dwOutputStreamID,
 	IMFMediaType    **ppType
-	) _NOEXCEPT
+	) noexcept
 {
 	if (ppType == nullptr)
 	{
@@ -681,7 +633,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::ProcessOutput(
 	DWORD dwFlags,
 	DWORD cOutputBufferCount,
 	/* [size_is][out][in] */ MFT_OUTPUT_DATA_BUFFER *pOutputSamples,
-	/* [out] */ DWORD *pdwStatus) _NOEXCEPT
+	/* [out] */ DWORD *pdwStatus) noexcept
 {
 	if (dwFlags != 0)
 	{
@@ -707,9 +659,6 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::ProcessOutput(
 	vgmcodec::helpers::lockHelper lock(*this);
 
 	HRESULT hr = S_OK;
-	DWORD cbData = 0;
-
-	ATL::CComPtr<IMFMediaBuffer> pOutput;
 
 	// If we don't have an input sample, we need some input before
 	// we can generate any output.
@@ -718,6 +667,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::ProcessOutput(
 		hr = MF_E_TRANSFORM_NEED_MORE_INPUT;
 	}
 
+	ATL::CComPtr<IMFMediaBuffer> pOutput;
 	// Get the output buffer.
 
 	if (SUCCEEDED(hr))
@@ -725,6 +675,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::ProcessOutput(
 		hr = pOutputSamples[0].pSample->GetBufferByIndex(0, &pOutput);
 	}
 
+	DWORD cbData = 0;
 	if (SUCCEEDED(hr))
 	{
 		hr = pOutput->GetMaxLength(std::addressof(cbData));
@@ -770,7 +721,8 @@ COM_DECLSPEC_NOTHROW HRESULT CvgmSampleRenderer::InternalProcessOutput(IMFSample
 
 	if (SUCCEEDED(hr))
 	{
-		SecureZeroMemory(locker.pData, locker.maxLength);
+		std::fill(locker.begin(), locker.end(), 0);
+		//SecureZeroMemory(locker.pData, locker.maxLength);
 		memcpy_s(locker.pData, locker.maxLength, this->m_outputQueue.data(), this->m_outputQueue.size() * sizeof(outputQueue::value_type));
 		this->m_outputQueue.fill({ 0, 0 });
 		this->m_queueLocation = this->m_outputQueue.begin();
@@ -790,7 +742,7 @@ COM_DECLSPEC_NOTHROW HRESULT CvgmSampleRenderer::InternalProcessOutput(IMFSample
 
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::SetOutputBounds( 
 	LONGLONG hnsLowerBound,
-	LONGLONG hnsUpperBound) _NOEXCEPT
+	LONGLONG hnsUpperBound) noexcept
 {
 	UNREFERENCED_PARAMETER(hnsLowerBound);
 	UNREFERENCED_PARAMETER(hnsUpperBound);
@@ -800,7 +752,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::SetOutputBounds(
 COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::ProcessInput( 
 	DWORD dwInputStreamID,
 	IMFSample *pSample,
-	DWORD dwFlags) _NOEXCEPT
+	DWORD dwFlags) noexcept
 {
 	if (pSample == nullptr)
 	{
@@ -820,7 +772,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::ProcessInput(
 	
 	HRESULT hr = S_OK;
 //	LONGLONG rtTimestamp = 0;
-	ATL::CComPtr<IMFMediaBuffer> buffer;
+	
 	if (!m_pInputType || !m_pOutputType)
 	{
 		hr = MF_E_NOTACCEPTING;   // Client must set input and output types.
@@ -829,7 +781,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CvgmSampleRenderer::ProcessInput(
 	{
 		hr = MF_E_NOTACCEPTING;   // We already have an input sample.
 	}
-
+	ATL::CComPtr<IMFMediaBuffer> buffer;
 	if (SUCCEEDED(hr))
 	{   
 		// NOTE: This does not cause a copy unless there are multiple buffers

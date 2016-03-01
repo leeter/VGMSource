@@ -2,6 +2,7 @@
 
 #include "stdafx.h"
 #include "vgmByteStreamHandler.h"
+#include "ExceptionTranslator.h"
 
 namespace{
 	const size_t HEADERBUFF_LEN = 12;
@@ -16,87 +17,61 @@ IFACEMETHODIMP CvgmByteStreamHandler::BeginCreateObject(
 	/* [annotation][out] */
 	_Outptr_opt_  IUnknown **ppIUnknownCancelCookie,
 	/* [in] */ IMFAsyncCallback *pCallback,
-	/* [in] */ IUnknown *punkState) _NOEXCEPT
+	/* [in] */ IUnknown *punkState) noexcept
 {
 	UNREFERENCED_PARAMETER(pProps);
 	UNREFERENCED_PARAMETER(pwszURL);
-	if ((pByteStream == nullptr) || (pCallback == nullptr))
-	{
-		return E_POINTER;
-	}
-	if ((dwFlags & MF_RESOLUTION_MEDIASOURCE) == 0)
-	{
-		return E_INVALIDARG;
-	}
+	vgmcodec::exceptions::ExceptionTranslator trans{ 
+		[pByteStream, pCallback, dwFlags, punkState, &ppIUnknownCancelCookie, this]() {
+			vgmcodec::exceptions::check_pointer(pByteStream);
+			vgmcodec::exceptions::check_pointer(pCallback);
 
-	if (ppIUnknownCancelCookie)
-	{
-		this->QueryInterface(IID_PPV_ARGS(ppIUnknownCancelCookie));
-	}
-	
-	ATL::CComPtr<IMFByteStream> toOutput;
+			if ((dwFlags & MF_RESOLUTION_MEDIASOURCE) == 0)
+			{
+				_com_issue_error(E_INVALIDARG);
+			}
+			if (ppIUnknownCancelCookie)
+			{
+				_com_util::CheckError(this->QueryInterface(IID_PPV_ARGS(ppIUnknownCancelCookie)));
+			}
 
-	HRESULT hr = pByteStream->SetCurrentPosition(0L);
-	if (FAILED(hr))
-	{
-		return hr;
-	}
-	BYTE headerBuff[HEADERBUFF_LEN];
-	ULONG read = 0;
-	hr = pByteStream->Read(headerBuff, HEADERBUFF_LEN, std::addressof(read));
-	if (FAILED(hr) || read < HEADERBUFF_LEN)
-	{
-		return MF_E_CANNOT_PARSE_BYTESTREAM;
-	}
+			_com_util::CheckError(pByteStream->SetCurrentPosition(0L));
 
-	bool isVGM = true;
-	// verify the header starts with "Vgm " (space included) 32bits Little Endian
-	if (headerBuff[0] != 'V' && headerBuff[1] != 'g' && headerBuff[2] != 'm' && headerBuff[3] != ' ')
-	{
-		isVGM = false;
-	}
+			std::array<BYTE, HEADERBUFF_LEN> headerBuff;
+			ULONG read = 0;
+			HRESULT hr = pByteStream->Read(headerBuff.data(), static_cast<ULONG>(headerBuff.size()), std::addressof(read));
+			if (FAILED(hr) || read < headerBuff.size())
+			{
+				_com_issue_error(MF_E_CANNOT_PARSE_BYTESTREAM);
+			}
 
-	// it's actually a VGZ file and is GZipped, we need to UnGzip
-	if (headerBuff[0] == 0x1F && headerBuff[1] == 0x8B)
-	{
-		try
-		{
-			toOutput = this->handleGZip(pByteStream);
+			bool isVGM = true;
+			// verify the header starts with "Vgm " (space included) 32bits Little Endian
+			if (headerBuff[0] != 'V' && headerBuff[1] != 'g' && headerBuff[2] != 'm' && headerBuff[3] != ' ')
+			{
+				isVGM = false;
+			}
+
+			ATL::CComPtr<IMFByteStream> toOutput;
+			// it's actually a VGZ file and is GZipped, we need to UnGzip
+			if (headerBuff[0] == 0x1F && headerBuff[1] == 0x8B)
+			{
+				toOutput = this->handleGZip(pByteStream);
+			}
+			else
+			{
+				toOutput = pByteStream;
+			}
+
+			ATL::CComPtr<IVGMSource> pSource;
+			_com_util::CheckError(pSource.CoCreateInstance(CLSID_vgmSource));
+			_com_util::CheckError(pSource->Open(toOutput));
+			ATL::CComPtr<IMFAsyncResult> pResult;
+			_com_util::CheckError(::MFCreateAsyncResult(pSource, pCallback, punkState, &pResult));
+			_com_util::CheckError(::MFInvokeCallback(pResult));
 		}
-		catch (_com_error & ex)
-		{
-			hr = ex.Error();
-		}
-		catch (...){
-			hr = E_FAIL;
-		}
-	}
-	else
-	{
-		toOutput = pByteStream;
-	}
-
-
-	ATL::CComPtr<IVGMSource> pSource;
-	ATL::CComPtr<IMFAsyncResult> pResult;
-
-	hr = pSource.CoCreateInstance(CLSID_vgmSource);
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pSource->Open(toOutput);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = ::MFCreateAsyncResult(pSource, pCallback, punkState, &pResult);
-	}
-	if (SUCCEEDED(hr))
-	{
-		::MFInvokeCallback(pResult);
-	}
-
-	return hr;
+	};
+	return trans();
 }
 
 IFACEMETHODIMP CvgmByteStreamHandler::EndCreateObject(
@@ -104,7 +79,7 @@ IFACEMETHODIMP CvgmByteStreamHandler::EndCreateObject(
 	/* [annotation][out] */
 	_Out_  MF_OBJECT_TYPE *pObjectType,
 	/* [annotation][out] */
-	_Outptr_  IUnknown **ppObject) _NOEXCEPT
+	_Outptr_  IUnknown **ppObject) noexcept
 {
 	HRESULT hr = S_OK;
 
@@ -121,14 +96,15 @@ IFACEMETHODIMP CvgmByteStreamHandler::EndCreateObject(
 
 	if (SUCCEEDED(hr))
 	{
+		
 		ATL::CComPtr<IMFMediaSource> pSource;
 		// Minimal sanity check - is it really a media source?
-		hr = pUnk->QueryInterface(IID_PPV_ARGS(&pSource));
+		hr = pUnk.QueryInterface(&pSource);
 	}
 
 	if (SUCCEEDED(hr))
 	{
-		pUnk->QueryInterface(IID_PPV_ARGS(ppObject));
+		hr = pUnk.QueryInterface(ppObject);
 		*pObjectType = MF_OBJECT_MEDIASOURCE;
 	}
 
@@ -136,7 +112,7 @@ IFACEMETHODIMP CvgmByteStreamHandler::EndCreateObject(
 }
 
 IFACEMETHODIMP CvgmByteStreamHandler::CancelObjectCreation(
-	/* [in] */ IUnknown *pIUnknownCancelCookie) _NOEXCEPT
+	/* [in] */ IUnknown *pIUnknownCancelCookie) noexcept
 {
 	UNREFERENCED_PARAMETER(pIUnknownCancelCookie);
 	return E_NOTIMPL;
@@ -144,7 +120,7 @@ IFACEMETHODIMP CvgmByteStreamHandler::CancelObjectCreation(
 
 IFACEMETHODIMP CvgmByteStreamHandler::GetMaxNumberOfBytesRequiredForResolution(
 	/* [annotation][out] */
-	_Out_  QWORD *pqwBytes) _NOEXCEPT
+	_Out_  QWORD *pqwBytes) noexcept
 {
 	if (pqwBytes == nullptr)
 	{
@@ -158,8 +134,8 @@ IFACEMETHODIMP CvgmByteStreamHandler::GetMaxNumberOfBytesRequiredForResolution(
 
 ATL::CComPtr<IMFByteStream> CvgmByteStreamHandler::handleGZip(gsl::not_null<IMFByteStream*> stream)
 {
-	QWORD streamLength = 0;
 	_com_util::CheckError(stream->SetCurrentPosition(0));
+	QWORD streamLength = 0;
 	_com_util::CheckError(stream->GetLength(std::addressof(streamLength)));
 	std::stringstream outBuff;
 	ULONG read = 0;

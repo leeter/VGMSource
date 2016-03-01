@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "lockHelper.h"
+#include <mutex>
 
 using namespace vgmcodec::helpers;
 

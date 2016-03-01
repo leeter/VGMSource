@@ -11,6 +11,8 @@ namespace vgmcodec{
 			~lockHelper();
 		private:
 			::ATL::CComObjectRootEx<::ATL::CComMultiThreadModel> &comObj;
+			lockHelper(const lockHelper&) = delete;
+			lockHelper& operator=(const lockHelper&) = delete;
 		};
 	}
 }

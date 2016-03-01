@@ -28,3 +28,4 @@ bufferLocker::operator HRESULT() const
 {
 	return hr;
 }
+

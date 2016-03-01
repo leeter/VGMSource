@@ -16,6 +16,13 @@ namespace vgmcodec{
 			~bufferLocker();
 			operator HRESULT() const;
 
+			BYTE * begin() {
+				return pData;
+			}
+			BYTE * end() {
+				return pData + maxLength;
+			}
+
 			BYTE * pData;
 			DWORD maxLength, currentLength;
 		};
